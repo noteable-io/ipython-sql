@@ -46,26 +46,22 @@ class Connection(object):
         if name and not name.startswith("@"):
             raise ValueError("name must start with @")
 
+        kwargs = {}
+
+        if connect_args_are_create_engine_kwargs:
+            kwargs.update(connect_args)
+        elif connect_args:
+            kwargs["connect_args"] = connect_args
+
+        if creator:
+            kwargs["creator"] = creator
+
         try:
-            if creator:
-                if connect_args_are_create_engine_kwargs:
-                    self._engine = sqlalchemy.create_engine(
-                        connect_str, creator=creator, **connect_args
-                    )
-                else:
-                    self._engine = sqlalchemy.create_engine(
-                        connect_str, connect_args=connect_args, creator=creator
-                    )
-            else:
-                if connect_args_are_create_engine_kwargs:
-                    self._engine = sqlalchemy.create_engine(connect_str, **connect_args)
-                else:
-                    self._engine = sqlalchemy.create_engine(
-                        connect_str, connect_args=connect_args
-                    )
+            self._engine = sqlalchemy.create_engine(connect_str, **kwargs)
         except:  # TODO: bare except; but what's an ArgumentError?
             print(self.tell_format())
             raise
+
         self.dialect = self._engine.url.get_dialect()
         self.metadata = sqlalchemy.MetaData(bind=self._engine)
         self.name = name or self.assign_name(self._engine)
