@@ -35,30 +35,32 @@ class Connection(object):
             cls.connections.keys()
         )
 
-    def __init__(
-        self,
-        connect_str=None,
-        connect_args={},
-        creator=None,
-        name=None,
-        connect_args_are_create_engine_kwargs=False,
-    ):
+    def __init__(self, connect_str=None, name=None, **create_engine_kwargs):
+        """
+        Construct + register a new 'connection', which in reality is a sqla Engine
+        plus some convienent metadata.
+
+        Common args to go into the create_engine call (and therefore need to be
+        passed in within `create_engine_kwargs`) include:
+
+          * connect_args: SQLA will pass these down to its call to create the DBAPI-level
+                            connection class when new low-level connections are
+                            established.
+
+          * creator: Callable which itself returns the DBAPI connection. See
+            https://docs-sqlalchemy.readthedocs.io/ko/latest/core/engines.html#custom-dbapi-connect-arguments
+
+        Sets the 'current' connection to the newly init'd one.
+
+        No session is immediately established (see the session property).
+
+        """
         if name and not name.startswith("@"):
-            raise ValueError("name must start with @")
-
-        kwargs = {}
-
-        if connect_args_are_create_engine_kwargs:
-            kwargs.update(connect_args)
-        elif connect_args:
-            kwargs["connect_args"] = connect_args
-
-        if creator:
-            kwargs["creator"] = creator
+            raise ValueError("preassigned names must start with @")
 
         try:
-            self._engine = sqlalchemy.create_engine(connect_str, **kwargs)
-        except:  # TODO: bare except; but what's an ArgumentError?
+            self._engine = sqlalchemy.create_engine(connect_str, **create_engine_kwargs)
+        except Exception:  # TODO: bare-ish except; but what's an ArgumentError?
             print(self.tell_format())
             raise
 
@@ -67,7 +69,7 @@ class Connection(object):
         self.name = name or self.assign_name(self._engine)
         self._session = None
         self.connections[name or repr(self.metadata.bind.url)] = self
-        self.connect_args = connect_args
+
         Connection.current = self
 
     @property
@@ -79,15 +81,7 @@ class Connection(object):
         return self._session
 
     @classmethod
-    def set(
-        cls,
-        descriptor,
-        displaycon,
-        connect_args={},
-        creator=None,
-        name=None,
-        connect_args_are_create_engine_kwargs=False,
-    ):
+    def set(cls, descriptor, displaycon, name=None, **create_engine_kwargs):
         "Sets the current database connection"
 
         if descriptor:
@@ -98,10 +92,8 @@ class Connection(object):
                 # http://docs.sqlalchemy.org/en/rel_0_9/core/engines.html#custom-dbapi-connect-arguments
                 cls.current = existing or Connection(
                     descriptor,
-                    connect_args,
-                    creator,
                     name,
-                    connect_args_are_create_engine_kwargs,
+                    **create_engine_kwargs,
                 )
         else:
             if cls.connections:
@@ -110,7 +102,7 @@ class Connection(object):
             else:
                 if os.getenv("DATABASE_URL"):
                     cls.current = Connection(
-                        os.getenv("DATABASE_URL"), connect_args, creator
+                        os.getenv("DATABASE_URL"), **create_engine_kwargs
                     )
                 else:
                     raise ConnectionError(
