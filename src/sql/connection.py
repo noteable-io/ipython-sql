@@ -58,6 +58,17 @@ class Connection(object):
         if name and not name.startswith("@"):
             raise ValueError("preassigned names must start with @")
 
+        if (
+            "creator" in create_engine_kwargs
+            and create_engine_kwargs["creator"] is None
+        ):
+            # As called from sql.magic in calling sql.connection.Connection.set,
+            # will always pass kwarg 'creator', but it will most likely be None.
+            # SQLA does not like it passed in as None (will still try to call it).
+            # So must remove the dict. Is cause for why legacy BigQuery connection
+            # fails.
+            del create_engine_kwargs["creator"]
+
         try:
             self._engine = sqlalchemy.create_engine(connect_str, **create_engine_kwargs)
         except Exception:  # TODO: bare-ish except; but what's an ArgumentError?
