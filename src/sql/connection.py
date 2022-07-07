@@ -1,7 +1,8 @@
 import os
-import re
+from typing import Optional
 
 import sqlalchemy
+from sqlalchemy.engine import Engine
 
 
 class ConnectionError(Exception):
@@ -35,7 +36,9 @@ class Connection(object):
             cls.connections.keys()
         )
 
-    def __init__(self, connect_str=None, name=None, **create_engine_kwargs):
+    def __init__(
+        self, connect_str=None, name=None, human_name=None, **create_engine_kwargs
+    ):
         """
         Construct + register a new 'connection', which in reality is a sqla Engine
         plus some convienent metadata.
@@ -53,6 +56,14 @@ class Connection(object):
         Sets the 'current' connection to the newly init'd one.
 
         No session is immediately established (see the session property).
+
+        'name' is what we call now the 'sql_cell_handle' -- starts with '@', followed by
+        the hex of the datasource uuid (usually -- the legacy sqlite and bigquery do not
+        use the hex convention because they predate datasources)
+
+        'human_name' is the name that the user gave the datasource ('My PostgreSQL Connection')
+        (again, only for real datasource connections). There's a slight risk of name collision
+        due to having the same name used between user and space scopes, but so be it.
 
         """
         if name and not name.startswith("@"):
@@ -78,6 +89,7 @@ class Connection(object):
         self.dialect = self._engine.url.get_dialect()
         self.metadata = sqlalchemy.MetaData(bind=self._engine)
         self.name = name or self.assign_name(self._engine)
+        self.human_name = human_name
         self._session = None
         self.connections[name or repr(self.metadata.bind.url)] = self
 
@@ -139,6 +151,15 @@ class Connection(object):
                 template = "   {}"
             result.append(template.format(engine_url.__repr__()))
         return "\n".join(result)
+
+    @classmethod
+    def get_engine(cls, name: str) -> Optional[Engine]:
+        """Return the SQLAlchemy Engine given either the sql_cell_handle or
+        end-user assigned name for the connection.
+        """
+        for c in cls.connections.values():
+            if c.name == name or c.human_name == name:
+                return c._engine
 
     def _close(cls, descriptor):
         if isinstance(descriptor, Connection):
