@@ -11,7 +11,12 @@ from IPython.core.magic import (
 )
 from IPython.core.magic_arguments import argument, magic_arguments, parse_argstring
 from IPython.display import display_javascript
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import (
+    OperationalError,
+    ProgrammingError,
+    InterfaceError,
+    DatabaseError,
+)
 
 import sql.connection
 import sql.parse
@@ -257,11 +262,42 @@ class SqlMagic(Magics, Configurable):
                 # Return results into the default ipython _ variable
                 return result
 
-        except (ProgrammingError, OperationalError) as e:
-            # Sqlite apparently return all errors as OperationalError :/
-            if self.short_errors:
-                print(e)
+        except (ProgrammingError, InterfaceError, DatabaseError, OperationalError) as e:
+
+            # Normal syntax errors, missing table, etc. should come back as
+            # ProgrammingError. And the rest indicate something fundamentally
+            # broken at the DBAPI layer.
+            #
+            # BUT of course sqlite returns ALL errors as OperationalError. Sigh.
+
+            is_fatal = type(e) != ProgrammingError and not (
+                isinstance(e, OperationalError) and "sqlite" in str(e)
+            )
+
+            if not is_fatal:
+                if self.short_errors:
+                    print(e)
+                else:
+                    raise
             else:
+                #
+                # Some sort of DBAPI-level error. Let's be conservative an err on the
+                # side of force-closing all of the engine's connections. This happens
+                # to Databricks if you leave the connection open and idle too long, but
+                # the existing connection is completely poisoned. We gots to
+                # dispose of the existing connection pool and make sure we get a brand
+                # new connection next time so that when the user does what users
+                # do in the face of errors (just hit the run button again), we want
+                # to try to give 'em a different experience the next go around.
+                #
+                # "Restart Kernel" is too big of a hammer here.
+                #
+                conn._engine.dispose()
+                conn._session = None
+                print(
+                    "Encoutered the following unexpected exception while trying to run the statement."
+                    " Closed the connection just to be safe. Re-run the cell to try again!\n\n"
+                )
                 raise
 
     legal_sql_identifier = re.compile(r"^[A-Za-z0-9#_$]+")
