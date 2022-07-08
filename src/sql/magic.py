@@ -270,7 +270,7 @@ class SqlMagic(Magics, Configurable):
             #
             # BUT of course sqlite returns ALL errors as OperationalError. Sigh.
 
-            is_fatal = type(e) != ProgrammingError and not (
+            is_fatal = not isinstance(e, ProgrammingError) and not (
                 isinstance(e, OperationalError) and "sqlite" in str(e)
             )
 
