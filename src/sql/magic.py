@@ -10,10 +10,10 @@ from IPython.core.magic import (
     needs_local_scope,
 )
 from IPython.core.magic_arguments import argument, magic_arguments, parse_argstring
-from IPython.display import display_javascript
 from sqlalchemy.exc import (
     OperationalError,
     ProgrammingError,
+    InternalError,
     InterfaceError,
     DatabaseError,
 )
@@ -262,7 +262,13 @@ class SqlMagic(Magics, Configurable):
                 # Return results into the default ipython _ variable
                 return result
 
-        except (ProgrammingError, InterfaceError, DatabaseError, OperationalError) as e:
+        except (
+            ProgrammingError,
+            InternalError,
+            InterfaceError,
+            DatabaseError,
+            OperationalError,
+        ) as e:
 
             # Normal syntax errors, missing table, etc. should come back as
             # ProgrammingError. And the rest indicate something fundamentally
@@ -335,5 +341,4 @@ def load_ipython_extension(ip):
     # I get the error: TypeError: IPython.CodeCell.config_defaults is undefined
 
     # js = "IPython.CodeCell.config_defaults.highlight_modes['magic_sql'] = {'reg':[/^%%sql/]};"
-    # display_javascript(js, raw=True)
     ip.register_magics(SqlMagic)
